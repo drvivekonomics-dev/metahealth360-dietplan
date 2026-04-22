@@ -143,6 +143,8 @@ export default function PlanPreviewScreen() {
         </Section>
       ) : null}
 
+      {plan.glpIf && plan.glpIf.enabled ? renderGlpIfCard(plan.glpIf) : null}
+
       <Section title="Calculators">
         <KV k="BMI" v={c.bmi} />
         <KV k="BMR" v={`${c.bmr || "—"} kcal`} />
@@ -268,6 +270,77 @@ function cuisineLabel(id) {
 function overlayLabel(id) {
   const map = { none: "—", jain: "Jain", satvik: "Satvik", navratri: "Navratri", ramadan: "Ramadan" };
   return map[id] || "—";
+}
+
+function dayLabelFull(key) {
+  const m = { mon:"Monday", tue:"Tuesday", wed:"Wednesday", thu:"Thursday", fri:"Friday", sat:"Saturday", sun:"Sunday" };
+  return m[key] || key || "—";
+}
+
+function renderGlpIfCard(glpIf) {
+  const safety = glpIf.safety || {};
+  const drugLabel = (glpIf.drugMeta && glpIf.drugMeta.label) || glpIf.drug || "—";
+  const doseUnit  = (glpIf.drugMeta && glpIf.drugMeta.doseUnit) || "mg";
+  const ifLabel   = (glpIf.ifMeta && glpIf.ifMeta.label) || glpIf.ifProtocol || "—";
+  const windowStr = glpIf.window && glpIf.window.start && glpIf.window.end
+    ? `${glpIf.window.start} – ${glpIf.window.end}`
+    : "—";
+
+  if (safety.contraindicated) {
+    return (
+      <View style={[styles.section, { backgroundColor: "#fdecee", borderLeftWidth: 4, borderLeftColor: "#B23A48" }]}>
+        <Text style={[styles.sectionTitle, { color: "#B23A48" }]}>
+          ⛔ GLP-1 / GIP Agonist — Contraindicated
+        </Text>
+        {(safety.reasons || []).map((r, i) => (
+          <Text key={i} style={[styles.bullet, { color: "#B23A48" }]}>• {r}</Text>
+        ))}
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.section}>
+      <Text style={styles.sectionTitle}>GLP-1 / GIP Agonist + Intermittent Fasting</Text>
+      <View style={styles.kvRow}>
+        <Text style={styles.kvK}>Medication</Text>
+        <Text style={styles.kvV}>{drugLabel}</Text>
+      </View>
+      <View style={styles.kvRow}>
+        <Text style={styles.kvK}>Dose</Text>
+        <Text style={styles.kvV}>{glpIf.dose ? `${glpIf.dose} ${doseUnit}` : "—"}</Text>
+      </View>
+      <View style={styles.kvRow}>
+        <Text style={styles.kvK}>Dose day</Text>
+        <Text style={styles.kvV}>{dayLabelFull(glpIf.doseDay)}</Text>
+      </View>
+      <View style={styles.kvRow}>
+        <Text style={styles.kvK}>Fasting protocol</Text>
+        <Text style={styles.kvV}>{ifLabel}</Text>
+      </View>
+      <View style={styles.kvRow}>
+        <Text style={styles.kvK}>Eating window</Text>
+        <Text style={styles.kvV}>{windowStr}</Text>
+      </View>
+      {glpIf.drugMeta && glpIf.drugMeta.typicalWeightLoss ? (
+        <View style={styles.kvRow}>
+          <Text style={styles.kvK}>Expected wt-loss</Text>
+          <Text style={styles.kvV}>{glpIf.drugMeta.typicalWeightLoss}</Text>
+        </View>
+      ) : null}
+      {Array.isArray(safety.warnings) && safety.warnings.length ? (
+        <View style={{ marginTop: 8, padding: 8, backgroundColor: "#fff8e6", borderLeftWidth: 3, borderLeftColor: "#E0A000", borderRadius: 4 }}>
+          <Text style={{ fontWeight: "700", color: "#7a5a00", fontSize: 12, marginBottom: 4 }}>
+            ⚠ Monitor / Adjust
+          </Text>
+          {safety.warnings.map((w, i) => (
+            <Text key={i} style={[styles.bullet, { color: "#7a5a00" }]}>• {w}</Text>
+          ))}
+        </View>
+      ) : null}
+      <Text style={styles.previewNote}>Full dose-phase schedule, macro targets, counselling and references included in the PDF.</Text>
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({

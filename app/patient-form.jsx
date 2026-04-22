@@ -13,6 +13,7 @@ import { CUISINES } from "../src/engine/cuisineMeals";
 import { OVERLAYS } from "../src/engine/dietaryOverlay";
 import { LANGUAGES } from "../src/i18n/translations";
 import { DRUG_RULES, ALLERGY_RULES } from "../src/engine/interactions";
+import { GLP_DRUG_LIST, IF_LIST } from "../src/engine/glpIfProtocol";
 import { parseLabText, mergeLabsIntoForm } from "../src/utils/labParser";
 import { findByName } from "../src/storage/archive";
 import { auth } from "../src/firebase/config";
@@ -58,7 +59,31 @@ const EMPTY = {
   language: "en",
   followUpDate: "",
   doctorNotes: "",
-  labPasteText: ""
+  labPasteText: "",
+
+  // GLP-1 / GIP agonist + IF protocol
+  glpIf: {
+    enabled: false,
+    drug: "semaglutide",
+    dose: "",
+    doseDay: "mon",
+    ifProtocol: "16:8",
+    eatingWindowStart: "",
+    eatingWindowEnd: ""
+  },
+  glpFlags: {
+    mtcHistory: false,
+    men2: false,
+    pregnancy: false,
+    lactation: false,
+    gastroparesis: false,
+    pancreatitisActive: false,
+    pancreatitisHx: false,
+    gallbladderDisease: false,
+    t1dm: false,
+    retinopathyProliferative: false,
+    eatingDisorderHx: false
+  }
 };
 
 // --------- Tiny building blocks ---------------------------------------------
@@ -172,6 +197,9 @@ export default function PatientFormScreen() {
       ...p,
       [key]: p[key].includes(id) ? p[key].filter((x) => x !== id) : [...p[key], id]
     }));
+  const updateGlpIf = (k, v) => setF((p) => ({ ...p, glpIf: { ...p.glpIf, [k]: v } }));
+  const toggleGlpFlag = (k) =>
+    setF((p) => ({ ...p, glpFlags: { ...p.glpFlags, [k]: !p.glpFlags[k] } }));
 
   const canSubmit = useMemo(() => f.conditions.length > 0 && f.weight && f.height && f.age, [f]);
 
@@ -224,7 +252,9 @@ export default function PatientFormScreen() {
       sodium: +f.sodium || undefined,
       potassium: +f.potassium || undefined,
       urea: +f.urea || undefined,
-      albumin: +f.albumin || undefined
+      albumin: +f.albumin || undefined,
+      glpIf: f.glpIf && f.glpIf.enabled ? { ...f.glpIf } : { enabled: false },
+      glpFlags: { ...f.glpFlags }
     };
 
     // Visit-to-visit lookup: find the last archived plan for this same name.
@@ -404,6 +434,118 @@ export default function PatientFormScreen() {
         options={Object.entries(ALLERGY_RULES).map(([v, r]) => ({ v, l: r.label }))}
       />
 
+      {/* ===== GLP-1 / GIP agonist + IF ===== */}
+      <Text style={styles.section}>GLP-1 / GIP agonist + Intermittent Fasting</Text>
+      <View style={styles.switchRow}>
+        <Text style={styles.switchLabel}>Enable GLP-1 + IF plan</Text>
+        <Switch
+          value={f.glpIf.enabled}
+          onValueChange={(v) => updateGlpIf("enabled", v)}
+          trackColor={{ false: "#ccc", true: "#0B6E4F" }}
+          thumbColor="#fff"
+        />
+      </View>
+
+      {f.glpIf.enabled ? (
+        <>
+          <Field label="Medication">
+            <Picker
+              value={f.glpIf.drug}
+              onChange={(v) => updateGlpIf("drug", v)}
+              options={GLP_DRUG_LIST.map((d) => ({ v: d.value, l: d.label }))}
+            />
+          </Field>
+          <View style={styles.row}>
+            <Field label="Current dose (mg)">
+              <Num
+                value={f.glpIf.dose}
+                onChange={(v) => updateGlpIf("dose", v)}
+                placeholder="e.g. 1.0"
+              />
+            </Field>
+            <Field label="Injection / dose day (weekly agents)">
+              <Picker
+                value={f.glpIf.doseDay}
+                onChange={(v) => updateGlpIf("doseDay", v)}
+                options={[
+                  { v: "mon", l: "Mon" }, { v: "tue", l: "Tue" }, { v: "wed", l: "Wed" },
+                  { v: "thu", l: "Thu" }, { v: "fri", l: "Fri" }, { v: "sat", l: "Sat" },
+                  { v: "sun", l: "Sun" }
+                ]}
+              />
+            </Field>
+          </View>
+          <Field label="Fasting protocol">
+            <Picker
+              value={f.glpIf.ifProtocol}
+              onChange={(v) => updateGlpIf("ifProtocol", v)}
+              options={IF_LIST.map((p) => ({ v: p.value, l: p.label }))}
+            />
+          </Field>
+          <View style={styles.row}>
+            <Field label="Eating window start (HH:MM, optional)">
+              <Txt
+                value={f.glpIf.eatingWindowStart}
+                onChange={(v) => updateGlpIf("eatingWindowStart", v)}
+                placeholder="12:00"
+              />
+            </Field>
+            <Field label="Eating window end (HH:MM, optional)">
+              <Txt
+                value={f.glpIf.eatingWindowEnd}
+                onChange={(v) => updateGlpIf("eatingWindowEnd", v)}
+                placeholder="20:00"
+              />
+            </Field>
+          </View>
+
+          <Text style={styles.subsection}>Contraindications (any ✓ blocks initiation)</Text>
+          <View style={styles.conditionGrid}>
+            {[
+              ["mtcHistory", "Personal h/o MTC"],
+              ["men2", "MEN-2 syndrome"],
+              ["pregnancy", "Pregnant"],
+              ["lactation", "Lactating"],
+              ["gastroparesis", "Severe gastroparesis"],
+              ["pancreatitisActive", "Active pancreatitis"]
+            ].map(([id, label]) => {
+              const on = f.glpFlags[id];
+              return (
+                <Pressable
+                  key={id}
+                  onPress={() => toggleGlpFlag(id)}
+                  style={[styles.flagPill, on && styles.flagPillDangerOn]}
+                >
+                  <Text style={[styles.flagText, on && styles.flagTextOn]}>{label}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          <Text style={styles.subsection}>Cautions (dose-adjust / monitor)</Text>
+          <View style={styles.conditionGrid}>
+            {[
+              ["pancreatitisHx", "Pancreatitis history"],
+              ["gallbladderDisease", "Gallbladder disease"],
+              ["t1dm", "Type 1 DM"],
+              ["retinopathyProliferative", "Proliferative retinopathy"],
+              ["eatingDisorderHx", "Eating disorder history"]
+            ].map(([id, label]) => {
+              const on = f.glpFlags[id];
+              return (
+                <Pressable
+                  key={id}
+                  onPress={() => toggleGlpFlag(id)}
+                  style={[styles.flagPill, on && styles.flagPillWarnOn]}
+                >
+                  <Text style={[styles.flagText, on && styles.flagTextOn]}>{label}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </>
+      ) : null}
+
       {/* ===== Follow-up & notes ===== */}
       <Text style={styles.section}>Follow-up & clinical notes</Text>
       <Field label="Next follow-up date (YYYY-MM-DD)">
@@ -472,6 +614,19 @@ const styles = StyleSheet.create({
   conditionPillOn: { backgroundColor: "#0B6E4F" },
   conditionText: { color: "#0B6E4F", fontSize: 12, fontWeight: "600" },
   conditionTextOn: { color: "#fff" },
+  subsection: {
+    fontSize: 12, fontWeight: "700", color: "#14213D",
+    marginTop: 10, marginBottom: 6
+  },
+  flagPill: {
+    paddingHorizontal: 10, paddingVertical: 8,
+    borderWidth: 1, borderColor: "#ccc", borderRadius: 16,
+    backgroundColor: "#fafafa", marginRight: 6, marginBottom: 6
+  },
+  flagPillDangerOn: { backgroundColor: "#B23A48", borderColor: "#B23A48" },
+  flagPillWarnOn:   { backgroundColor: "#E0A000", borderColor: "#E0A000" },
+  flagText:   { fontSize: 11, color: "#14213D" },
+  flagTextOn: { color: "#fff", fontWeight: "600" },
   actions: { marginTop: 16 },
   primary: { backgroundColor: "#0B6E4F", paddingVertical: 14, borderRadius: 8, alignItems: "center" },
   primaryText: { color: "#fff", fontSize: 15, fontWeight: "700" },
