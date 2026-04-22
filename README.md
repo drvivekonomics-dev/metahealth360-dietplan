@@ -1,96 +1,87 @@
-# MetaHealth360 — Mobile (Android APK)
+# MetaHealth360 Diet Plan — Mobile (Android APK)
 
-Clinical diet-plan generator for Indian patients. Doctor-only. On-device rule engine (no server needed for core logic), Google Sign-In via Firebase Auth. Generated PDFs are shared directly via the device share sheet (WhatsApp / email / print / Drive) — **no cloud archive**, so the project stays on Firebase's free Spark plan (no billing card required). If you need a fresh plan later, re-enter the labs.
+Clinic-only decision-support tool for Indian diabetology / endocrinology practice. On-device rule engine, Firebase email-password auth, PDFs rendered on the device and shared via the system share sheet (WhatsApp / email / print / Drive). No server, no PHI upload, no cloud archive.
+
+Package: `com.raskar.metahealth360.dietplan`
+
+---
+
+## What it does
+
+1. Intake form (Marathi / Hindi / English) captures anthropometry, labs, comorbidities, medications, allergies, activity, pregnancy / lactation, GLP-1 / IF preferences.
+2. Calculators: IBW (Devine), adjusted BW, BMI, BSA, BMR (Mifflin–St Jeor), TDEE, eGFR (CKD-EPI 2021), HOMA-IR, CrCl (Cockcroft–Gault), fluid targets.
+3. Condition engine layers rules for T2DM / prediabetes, dyslipidemia, HF (NYHA), CKD (by eGFR stage), iron-deficiency anemia, pregnancy / lactation, obesity / weight-loss, metabolic syndrome — most-restrictive-wins merge.
+4. Meal planner produces a 7-day Indian-food plan (138-item per-100 g nutrient DB) hitting the merged macro / fluid / micronutrient targets.
+5. **GLP-1 / GIP agonist + Intermittent Fasting module** (optional): semaglutide / rybelsus / dulaglutide / liraglutide / tirzepatide dose-phase schedule aligned to a 14:10 / 16:8 / 18:6 / 5:2 fasting window, with absolute-contraindication gating (MTC, MEN-2, pregnancy, lactation, gastroparesis, active pancreatitis) and amber monitoring flags (SU/insulin dose reduction, eGFR < 30, T1DM off-label, age ≥ 70 sarcopenia risk, proliferative retinopathy, ED history, gallbladder disease).
+6. PDF rendered from HTML via `expo-print`, 1.4 g/kg IBW protein floor, phase-banded weekly schedule table, full clinical-citation block.
+7. Share sheet via `expo-sharing` — WhatsApp / email / print / Drive. File lives on the device only for the moment of sharing.
 
 ## Stack
-- Expo SDK 55 (React Native, managed workflow)
-- Firebase Auth only (Google Sign-In) — no Cloud Storage, no Firestore
-- expo-print (on-device PDF generation from HTML)
-- expo-sharing (device share sheet for the generated PDF)
-- Pure-JS rule engine, ported from the web app
 
-## Covered conditions
-Type 2 Diabetes / Prediabetes · Dyslipidemia · Heart Failure (NYHA) · CKD (by eGFR stage) · Iron-Deficiency Anemia · Pregnancy / Lactation · Weight Loss / Obesity · Metabolic Syndrome — with most-restrictive-wins merging across comorbidities.
+- Expo SDK 55, React Native 0.83, Expo Router 4
+- Firebase Auth (email + password) — no Firestore, no Cloud Storage → stays on the Spark free tier
+- `expo-print` (on-device PDF) + `expo-sharing` (device share sheet)
+- Pure-JS rule engine (`src/engine`, `src/rules`)
 
----
+## Running locally
 
-## Setup
-
-### 1. Install Node 20 LTS (not 25)
-React Native is not tested on Node odd-numbered releases. Use `nvm install 20 && nvm use 20`.
-
-### 2. Install Expo + EAS CLIs globally
 ```bash
-npm install -g expo eas-cli
-```
-
-### 3. Install project deps
-```bash
-cd /Volumes/VIVEK1/MetaHealth360-Mobile
+nvm use 20
 npm install
+npx expo start               # dev server + QR for Expo Go
+npx expo run:android         # local Android build against a connected device / emulator
 ```
 
-### 4. Paste your Firebase config
-Open `src/firebase/config.js` and replace every `REPLACE_ME_*` with the values from the Firebase console → Project settings → Your apps → Web app.
-
-### 5. Paste your Google OAuth Client IDs
-Copy `.env.example` to `.env` and fill in:
-- `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` — created automatically when you enable the Google provider in Firebase Auth. Copy from Google Cloud Console → Credentials.
-- `EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID` — created after your first EAS build (see below).
-
-### 6. (No cloud storage step)
-Earlier versions of this app archived the generated PDFs to Firebase Cloud Storage. That required upgrading Firebase to the Blaze (pay-as-you-go) plan, which we deliberately avoid. PDFs are now generated on-device and handed straight to the system share sheet (WhatsApp / email / Drive / print). The file lives on the phone only for the moment of sharing and is not kept by the app.
-
----
-
-## Develop
+Build a distributable APK:
 
 ```bash
-npm start           # starts Expo dev server + QR
-# Scan with Expo Go on your Android phone (both on same Wi-Fi).
+eas build -p android --profile preview
 ```
 
-Google Sign-In in Expo Go uses the Expo auth proxy — for production sign-in you must build a standalone APK (next).
+Run the offline smoke test (no Expo, no JSX bundling — engine-only):
 
-## Build the APK
-
-### First-time EAS setup
 ```bash
-eas login                    # use your Expo account
-eas build:configure          # choose Android, EAS picks up eas.json
+node smoke.mjs
 ```
-
-### Build preview APK (installable on any Android device)
-```bash
-npm run build:apk            # eas build --profile preview --platform android
-```
-EAS builds in the cloud and emails you a download link (~15 min).
-
-### Get the SHA-1 for Android OAuth
-After the first build, fetch the signing fingerprint:
-```bash
-eas credentials --platform android
-# Select: "setup the fingerprint", or inspect existing keystore
-```
-Copy the SHA-1 fingerprint → Google Cloud Console → Credentials → Create OAuth Client ID (Android) → paste package name `com.metahealth360.app` + SHA-1 → grab the new Android Client ID → paste into `.env` as `EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID` → rebuild.
-
----
 
 ## Project layout
+
 ```
 app/
-  _layout.jsx          Router root. Auth gate + PlanContext.
-  login.jsx            Google Sign-In screen.
-  index.jsx            Post-login home.
-  patient-form.jsx     Patient intake (all fields from web app).
-  plan-preview.jsx     Summary + "Generate & Share PDF" action (expo-print + expo-sharing).
+  _layout.jsx          Router root, auth gate, PlanContext
+  login.jsx            Firebase email/password login
+  index.jsx            Post-login home
+  patient-form.jsx     Patient intake (including GLP-1 / IF section and safety flags)
+  plan-preview.jsx     Summary + "Generate & Share PDF" action
+assets/                app icon, splash, adaptive icon, notification icon
 src/
-  engine/              Rule engine (calculators, dietEngine, mealPlanner).
-  rules/               Per-condition modules (diabetes, ckd, HF, ...).
-  data/indianFoods.json  138 Indian foods per-100g nutrients.
-  pdf/buildHtml.js     HTML template fed to expo-print.
-  firebase/config.js   Firebase initialisation.
+  engine/
+    calculators.js        IBW / BMI / BMR / TDEE / eGFR / HOMA-IR / BSA
+    dietEngine.js         Merges condition rules, emits the plan object
+    mealPlanner.js        7-day Indian meal planner
+    glpIfProtocol.js      GLP-1 + intermittent-fasting protocol builder
+  rules/
+    diabetes.js · ckd.js · heartFailure.js · dyslipidemia.js ·
+    pregnancyLactation.js · anemia.js · obesity.js · metabolicSyndrome.js
+  pdf/
+    buildHtml.js       HTML template fed to expo-print
+    citations.js       Clinical-reference block (per-condition + GLP-1 / IF)
+  i18n/translations.js EN / HI / MR strings
+  storage/             AsyncStorage helpers for draft patient data
+  firebase/config.js   Firebase init (public web-app config — see note below)
+  data/indianFoods.json 138 Indian foods, per-100 g nutrients
+smoke.mjs              Engine-only smoke test (Node)
 ```
 
+## Scope & boundaries
+
+- **Clinic-only** — intended for a licensed physician / dietitian. All generated plans must be clinically reviewed before patient handoff.
+- **No PHI leaves the device.** There is no server, no analytics, no crash telemetry, no Firestore / Cloud Storage. Patient data lives in device `AsyncStorage` as a working draft and is never synced.
+- **No API secrets.** Firebase web-app `apiKey` in `src/firebase/config.js` is a public identifier (not a credential). Security is enforced by Firebase Auth rules + Android SHA-1 / bundle-ID pinning. See [Firebase docs on API keys](https://firebase.google.com/docs/projects/api-keys).
+- **Not a medical device.** Decision-support software; pharmacology rules reflect ADA 2025 + RSSDI-ESI 2024 consensus + CDSCO India (March 2025 tirzepatide approval) — confirm against current prescribing information for each patient.
+
 ## Clinical disclaimer
-Decision-support software for licensed physicians and dietitians. All generated plans must be clinically reviewed before patient handoff. See the web app's `docs/CLINICAL_REFERENCES.md` for source guidelines.
+
+This is decision-support software for licensed physicians and dietitians. All generated plans must be clinically reviewed before handoff. Citations in the PDF footer point to the underlying guideline sources (ADA, RSSDI-ESI, STEP / SURPASS / SURMOUNT trials, Longo-Mattson & Varady IF reviews, FDA prescribing information, CDSCO India).
+
+Built by **Dr. Vivek Raskar**, diabetologist.

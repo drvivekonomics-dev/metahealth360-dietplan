@@ -29,6 +29,16 @@ GoogleService-Info.plist
 # IDE
 .vscode/
 .idea/
+.claude/
 
 # Logs
 *.log
+
+# macOS screenshot dumps — never commit
+screenshot./
+screenshot.*/
+Screenshot*.png
+
+# Local dev helpers not needed in the repo
+restart.sh
+assets/_makeLogo.py
