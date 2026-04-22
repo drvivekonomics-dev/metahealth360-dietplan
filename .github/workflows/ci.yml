@@ -1,0 +1,89 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  smoke:
+    name: Syntax check + engine smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Syntax-check engine / rules / pdf / i18n / storage / utils
+        run: |
+          set -e
+          find src -type f -name "*.js" \
+            -not -path "*/node_modules/*" \
+            -not -name "._*" \
+          | while read -r f; do
+            echo "  --check $f"
+            node --check "$f"
+          done
+          node --check smoke.mjs
+
+      - name: Run engine smoke test
+        run: node smoke.mjs
+
+  jsx-parse:
+    name: Parse-check all JSX screens
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install @babel/parser
+        run: npm install --no-save --no-audit --no-fund @babel/parser
+
+      - name: Parse every .jsx file
+        run: |
+          node -e '
+            const fs = require("fs");
+            const path = require("path");
+            const parser = require("@babel/parser");
+
+            function walk(dir, out = []) {
+              for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+                if (entry.name === "node_modules") continue;
+                if (entry.name.startsWith("._")) continue;
+                const full = path.join(dir, entry.name);
+                if (entry.isDirectory()) walk(full, out);
+                else if (entry.name.endsWith(".jsx")) out.push(full);
+              }
+              return out;
+            }
+
+            const files = walk(".");
+            let failed = 0;
+            for (const f of files) {
+              try {
+                parser.parse(fs.readFileSync(f, "utf8"), {
+                  sourceType: "module",
+                  plugins: ["jsx"],
+                });
+                console.log("  ok  " + f);
+              } catch (e) {
+                console.error("  FAIL " + f + " — " + e.message);
+                failed++;
+              }
+            }
+            if (failed) {
+              console.error("\n" + failed + " file(s) failed to parse.");
+              process.exit(1);
+            }
+            console.log("\n" + files.length + " JSX files parsed cleanly.");
+          '
