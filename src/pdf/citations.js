@@ -87,14 +87,33 @@ export const CITATIONS = {
     "Appel LJ, et al. DASH diet (NHLBI) — multiple controlled trials; Sacks FM, N Engl J Med 2001;344:3-10.",
     "Estruch R, et al. PREDIMED trial — Primary Prevention of CVD with a Mediterranean Diet. N Engl J Med 2018;378:e34.",
     "ICMR Dietary Guidelines for Indians 2024."
+  ],
+
+  "glp-if": [
+    "ADA Standards of Care in Diabetes — 2025: Pharmacologic Approaches to Glycemic Treatment (Sec. 9) and Obesity and Weight Management (Sec. 8). Diabetes Care 2025;48(Suppl. 1).",
+    "Wilding JPH, et al. Once-Weekly Semaglutide in Adults with Overweight or Obesity (STEP-1). N Engl J Med 2021;384:989-1002.",
+    "Garvey WT, et al. Two-Year Effects of Semaglutide in Adults with Overweight or Obesity: STEP-5. Nat Med 2022;28:2083-2091.",
+    "Rubino D, et al. Semaglutide 2.4 mg + Intensive Behavioral Therapy (STEP-8). JAMA 2021;327(2):138-150.",
+    "Rosenstock J, et al. Efficacy and Safety of Tirzepatide Monotherapy in Type 2 Diabetes (SURPASS-1). Lancet 2021;398:143-155.",
+    "Frias JP, et al. Tirzepatide vs Semaglutide Once Weekly in Type 2 Diabetes (SURPASS-2). N Engl J Med 2021;385:503-515.",
+    "Jastreboff AM, et al. Tirzepatide Once Weekly for the Treatment of Obesity (SURMOUNT-1). N Engl J Med 2022;387:205-216.",
+    "Marso SP, et al. Liraglutide and Cardiovascular Outcomes in Type 2 Diabetes (LEADER). N Engl J Med 2016;375:311-322.",
+    "Davies M, et al. Semaglutide 2.4 mg Once Weekly in Adults with Overweight/Obesity and T2D (STEP-2). Lancet 2021;397:971-984.",
+    "Longo VD, Mattson MP. Fasting: Molecular Mechanisms and Clinical Applications. Cell Metab 2014;19(2):181-192.",
+    "de Cabo R, Mattson MP. Effects of Intermittent Fasting on Health, Aging, and Disease. N Engl J Med 2019;381:2541-2551.",
+    "Varady KA, et al. Cardiometabolic Benefits of Intermittent Fasting. Annu Rev Nutr 2021;41:333-361.",
+    "RSSDI-ESI Consensus on the Use of GLP-1 RAs and Dual GIP/GLP-1 Agonists in Indian Adults — 2024 addendum.",
+    "US FDA Prescribing Information: Ozempic® (semaglutide), Wegovy® (semaglutide 2.4 mg), Mounjaro® (tirzepatide), Zepbound® (tirzepatide), Rybelsus® (oral semaglutide), Trulicity® (dulaglutide), Saxenda®/Victoza® (liraglutide) — latest revisions.",
+    "CDSCO India — approval notifications for tirzepatide (Mounjaro®, March 2025) and semaglutide formulations."
   ]
 };
 
 /**
  * Return the ordered, de-duplicated citation list for the conditions in this plan.
- * ALWAYS block first, then condition-specific blocks in the order conditions appear.
+ * ALWAYS block first, then condition-specific blocks in the order conditions appear,
+ * then GLP-1 + IF references if the plan enables the GLP-1 / IF protocol.
  */
-export function buildCitations(conditions = []) {
+export function buildCitations(conditions = [], opts = {}) {
   const seen = new Set();
   const out = [];
   const push = (list) => {
@@ -107,6 +126,7 @@ export function buildCitations(conditions = []) {
   };
   push(CITATIONS.ALWAYS);
   for (const c of conditions) push(CITATIONS[c] || []);
+  if (opts && opts.glpIfEnabled) push(CITATIONS["glp-if"]);
   return out;
 }
 

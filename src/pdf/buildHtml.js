@@ -208,6 +208,125 @@ function renderFollowUp(date, lang) {
   return `<p><b>${esc(tr(lang, "followUp"))}:</b> ${esc(formatDate(date))}. Repeat relevant labs 1 week before the visit.</p>`;
 }
 
+// ---- GLP-1 + IF rendering ------------------------------------------------
+
+function dayLabelLocalized(dayKey, lang) {
+  const en = { mon:"Monday", tue:"Tuesday", wed:"Wednesday", thu:"Thursday", fri:"Friday", sat:"Saturday", sun:"Sunday" };
+  const hi = { mon:"सोमवार", tue:"मंगलवार", wed:"बुधवार", thu:"गुरुवार", fri:"शुक्रवार", sat:"शनिवार", sun:"रविवार" };
+  const mr = { mon:"सोमवार", tue:"मंगळवार", wed:"बुधवार", thu:"गुरुवार", fri:"शुक्रवार", sat:"शनिवार", sun:"रविवार" };
+  const dict = lang === "hi" ? hi : lang === "mr" ? mr : en;
+  return dict[dayKey] || en[dayKey] || dayKey;
+}
+
+function phaseBadge(phase, lang) {
+  const map = {
+    "dose-day":         { key: "glpIfPhaseDoseDay",  cls: "ph-dose" },
+    "peak-suppression": { key: "glpIfPhasePeak",     cls: "ph-peak" },
+    "steady":           { key: "glpIfPhaseSteady",   cls: "ph-steady" },
+    "appetite-return":  { key: "glpIfPhaseAppetite", cls: "ph-appetite" },
+    "low-cal-day":      { key: "glpIfPhaseLowCal",   cls: "ph-lowcal" },
+    "daily-agent":      { key: "glpIfPhaseDaily",    cls: "ph-daily" }
+  };
+  const e = map[phase] || map.steady;
+  return `<span class="ph-badge ${e.cls}">${esc(tr(lang, e.key))}</span>`;
+}
+
+function renderGlpIf(glpIf, lang) {
+  if (!glpIf || !glpIf.enabled) return "";
+  const safety = glpIf.safety || {};
+
+  // Contraindicated: show only the red safety card. Never render the rest —
+  // we do not want a clinician skimming a protocol they must not initiate.
+  if (safety.contraindicated) {
+    return section(
+      tr(lang, "glpIfTitle"),
+      `<div class="glp-contra">
+        <div class="glp-contra-title">⛔ ${esc(tr(lang, "glpIfContraindicated"))}</div>
+        ${bullets(safety.reasons || [], BRAND.danger)}
+      </div>`
+    );
+  }
+
+  const drugLabel = (glpIf.drugMeta && glpIf.drugMeta.label) || glpIf.drug || "—";
+  const doseUnit  = (glpIf.drugMeta && glpIf.drugMeta.doseUnit) || "mg";
+  const doseStr   = glpIf.dose ? `${esc(glpIf.dose)} ${esc(doseUnit)}` : "—";
+  const ifLabel   = (glpIf.ifMeta && glpIf.ifMeta.label) || glpIf.ifProtocol || "—";
+  const windowStr = glpIf.window && glpIf.window.start && glpIf.window.end
+    ? `${esc(glpIf.window.start)} – ${esc(glpIf.window.end)}`
+    : "—";
+
+  const warningsBlock = Array.isArray(safety.warnings) && safety.warnings.length
+    ? `<div class="glp-warn">
+        <div class="glp-warn-title">⚠ ${esc(tr(lang, "glpIfWarnings"))}</div>
+        ${bullets(safety.warnings, "#7a5a00")}
+      </div>`
+    : "";
+
+  const m = glpIf.macroTargets || {};
+  const macrosGrid = `
+    <div class="glp-macros">
+      <div><span class="k">${esc(tr(lang, "calories"))}</span><span class="v">${esc(m.kcal ?? "—")} kcal</span></div>
+      <div><span class="k">${esc(tr(lang, "protein"))}</span><span class="v">${esc(m.protein_g ?? "—")} g${m.protein_gPerKgIBW ? ` (${m.protein_gPerKgIBW} g/kg IBW)` : ""}</span></div>
+      <div><span class="k">Carbs</span><span class="v">${esc(m.carb_g ?? "—")} g</span></div>
+      <div><span class="k">Fat</span><span class="v">${esc(m.fat_g ?? "—")} g</span></div>
+      <div><span class="k">${esc(tr(lang, "fluid"))}</span><span class="v">${esc(m.fluid_ml ?? "—")} ml</span></div>
+      ${m.electrolytes ? `<div class="full"><span class="k">Electrolytes</span><span class="v">${esc(m.electrolytes)}</span></div>` : ""}
+    </div>`;
+
+  const schedRows = (glpIf.weeklySchedule || []).map((d) => `
+    <tr class="row-${esc(d.phase)}">
+      <td>${esc(dayLabelLocalized(d.dayKey, lang))}${d.doseDay ? " ⦿" : ""}</td>
+      <td>${phaseBadge(d.phase, lang)}</td>
+      <td>${d.fastHours ? esc(d.fastHours) + " h" : "—"}</td>
+      <td class="advice">${esc(d.advice || "")}</td>
+    </tr>`).join("");
+
+  const scheduleTable = `
+    <table class="glp-sched">
+      <thead>
+        <tr>
+          <th>${esc(tr(lang, "day"))}</th>
+          <th>Phase</th>
+          <th>Fast</th>
+          <th>Advice</th>
+        </tr>
+      </thead>
+      <tbody>${schedRows}</tbody>
+    </table>`;
+
+  const headerGrid = `
+    <div class="grid">
+      ${kv(tr(lang, "glpIfMedication"), drugLabel)}
+      ${kv(tr(lang, "glpIfDose"), doseStr)}
+      ${kv(tr(lang, "glpIfDoseDay"), dayLabelLocalized(glpIf.doseDay, lang))}
+      ${kv(tr(lang, "glpIfProtocol"), ifLabel)}
+      ${kv(tr(lang, "glpIfWindow"), windowStr)}
+      ${glpIf.drugMeta && glpIf.drugMeta.typicalWeightLoss ? kv("Expected wt-loss", glpIf.drugMeta.typicalWeightLoss) : ""}
+    </div>`;
+
+  return section(
+    tr(lang, "glpIfTitle"),
+    `${headerGrid}
+     ${warningsBlock}
+     <h3>${esc(tr(lang, "glpIfMacros"))}</h3>
+     ${macrosGrid}
+     <h3>${esc(tr(lang, "glpIfWeeklySchedule"))}</h3>
+     ${scheduleTable}
+     <div class="glp-foods">
+       <div>
+         <h3 class="glp-favor">✔ ${esc(tr(lang, "glpIfFavor"))}</h3>
+         ${bullets(glpIf.favor, BRAND.primary)}
+       </div>
+       <div>
+         <h3 class="glp-avoid">✘ ${esc(tr(lang, "glpIfAvoid"))}</h3>
+         ${bullets(glpIf.avoid, BRAND.danger)}
+       </div>
+     </div>
+     <h3>${esc(tr(lang, "glpIfCounselling"))}</h3>
+     ${bullets(glpIf.counselling)}`
+  );
+}
+
 export function buildHtml(plan) {
   const p = plan.patient || {};
   const c = plan.calculators || {};
@@ -300,6 +419,34 @@ export function buildHtml(plan) {
 
       /* Doctor notes */
       .dr-notes { padding: 8px 10px; background: #fff8e6; border-left: 3px solid ${BRAND.accent}; white-space: pre-wrap; font-size: 10.5px; }
+
+      /* GLP-1 + IF */
+      .glp-contra { background: #fdecee; border-left: 4px solid ${BRAND.danger}; padding: 8px 12px; border-radius: 3px; }
+      .glp-contra-title { font-weight: 700; color: ${BRAND.danger}; font-size: 12px; margin-bottom: 4px; }
+      .glp-warn { background: #fff8e6; border-left: 4px solid #e0a000; padding: 8px 12px; border-radius: 3px; margin: 6px 0; }
+      .glp-warn-title { font-weight: 700; color: #7a5a00; font-size: 11px; margin-bottom: 3px; }
+      .glp-macros { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 3px 12px; margin: 4px 0 8px; }
+      .glp-macros > div { padding: 3px 6px; background: ${BRAND.soft}; border-radius: 3px; font-size: 10.5px; }
+      .glp-macros > div.full { grid-column: 1 / -1; background: #fafafa; }
+      .glp-macros .k { font-weight: 700; margin-right: 6px; }
+      table.glp-sched { width: 100%; border-collapse: collapse; font-size: 10px; margin: 4px 0 10px; }
+      table.glp-sched th { background: ${BRAND.soft}; text-align: left; padding: 4px 6px; font-size: 10px; }
+      table.glp-sched td { padding: 4px 6px; border-bottom: 1px solid #eee; vertical-align: top; }
+      table.glp-sched td.advice { font-size: 9.5px; color: #333; }
+      .ph-badge { display: inline-block; padding: 1px 6px; border-radius: 8px; font-size: 9px; font-weight: 700; letter-spacing: 0.2px; }
+      .ph-dose { background: ${BRAND.accent}; color: #fff; }
+      .ph-peak { background: ${BRAND.primary}; color: #fff; }
+      .ph-steady { background: ${BRAND.soft}; color: ${BRAND.ink}; }
+      .ph-appetite { background: #f5d98b; color: ${BRAND.ink}; }
+      .ph-lowcal { background: #4F7FA8; color: #fff; }
+      .ph-daily { background: #d6d6d6; color: ${BRAND.ink}; }
+      tr.row-dose-day td { background: rgba(244,162,97,0.08); }
+      tr.row-peak-suppression td { background: rgba(11,110,79,0.05); }
+      tr.row-appetite-return td { background: rgba(224,160,0,0.06); }
+      tr.row-low-cal-day td { background: rgba(79,127,168,0.06); }
+      .glp-foods { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 14px; }
+      .glp-foods h3.glp-favor { color: ${BRAND.primary}; }
+      .glp-foods h3.glp-avoid { color: ${BRAND.danger}; }
     </style>
   </head>
   <body>
@@ -367,6 +514,7 @@ export function buildHtml(plan) {
       ${renderTrend(plan.trend, lang)}
       ${renderInteractions(plan.interactions, lang)}
       ${renderOverlay(plan.overlay, lang)}
+      ${renderGlpIf(plan.glpIf, lang)}
 
       ${section("Clinical Rules (Why this plan looks this way)", bullets(plan.rules))}
       ${section("✔ " + tr(lang, "do") + "'s — Include in Every Day", bullets(plan.doList, BRAND.primary))}
@@ -385,7 +533,7 @@ export function buildHtml(plan) {
         `<div class="citations">
           <div class="cite-title">Guidelines used for this plan</div>
           <ol>
-            ${buildCitations(p.conditions || []).map((c) => `<li>${esc(c)}</li>`).join("")}
+            ${buildCitations(p.conditions || [], { glpIfEnabled: !!(plan.glpIf && plan.glpIf.enabled) }).map((c) => `<li>${esc(c)}</li>`).join("")}
           </ol>
           <div class="cite-note">All dietary recommendations derived from the above guidelines, adapted for Indian dietary patterns and regional cuisine. Local food composition values sourced from IFCT 2017 (ICMR-NIN).</div>
         </div>`
