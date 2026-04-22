@@ -12,11 +12,10 @@
  * is registered separately as com.raskar.metahealth360.dietplan so its
  * install does NOT collide with the live mobile app.
  *
- * SECURITY NOTE:
- *   The values below are the PUBLIC web-app Firebase config. They are not
- *   secrets — Firebase uses them only to identify the project. Actual security
- *   is enforced by Firebase Auth rules + OAuth configuration (SHA-1 fingerprint
- *   for Android, bundle ID for iOS, authorised domains for Web).
+ * Firebase config values are loaded from environment variables (EXPO_PUBLIC_*).
+ * Copy .env.example → .env and fill in the values from:
+ * Firebase console → metahealth360 → Project settings → General →
+ * Web apps → "MetaHealth360 Doctor Portal" → SDK setup and configuration → Config.
  */
 
 import { initializeApp, getApps, getApp } from "firebase/app";
@@ -27,21 +26,15 @@ import {
 } from "firebase/auth";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-// -----------------------------------------------------------------------------
-// Config from Firebase console → metahealth360 → Project settings → General →
-// Web apps → "MetaHealth360 Doctor Portal" → SDK setup and configuration → Config.
-// These are public identifiers (shipped in every web bundle) — not secrets.
-// -----------------------------------------------------------------------------
 const firebaseConfig = {
-  apiKey: "AIzaSyDsWQ2JAqJXs_GcSINJRl9FVw1PDGN4oZs",
-  authDomain: "metahealth360.firebaseapp.com",
-  projectId: "metahealth360",
-  storageBucket: "metahealth360.firebasestorage.app",
-  messagingSenderId: "451170253706",
-  appId: "1:451170253706:web:3253cbe2d588d69cd32673",
-  measurementId: "G-FSDM97CPG3"
+  apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
+  measurementId: process.env.EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID
 };
-// -----------------------------------------------------------------------------
 
 // Initialise the Firebase app once (hot-reload safe)
 const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
