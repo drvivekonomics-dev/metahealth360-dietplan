@@ -1,5 +1,8 @@
 # MetaHealth360 Diet Plan — Mobile (Android APK)
 
+[![ci](https://github.com/drvivekonomics-dev/metahealth360-dietplan/actions/workflows/ci.yml/badge.svg)](https://github.com/drvivekonomics-dev/metahealth360-dietplan/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 Clinic-only decision-support tool for Indian diabetology / endocrinology practice. On-device rule engine, Firebase email-password auth, PDFs rendered on the device and shared via the system share sheet (WhatsApp / email / print / Drive). No server, no PHI upload, no cloud archive.
 
 Package: `com.raskar.metahealth360.dietplan`
@@ -83,5 +86,13 @@ smoke.mjs              Engine-only smoke test (Node)
 ## Clinical disclaimer
 
 This is decision-support software for licensed physicians and dietitians. All generated plans must be clinically reviewed before handoff. Citations in the PDF footer point to the underlying guideline sources (ADA, RSSDI-ESI, STEP / SURPASS / SURMOUNT trials, Longo-Mattson & Varady IF reviews, FDA prescribing information, CDSCO India).
+
+## Contributing
+
+Clinical rule changes must cite a guideline or peer-reviewed source — see the pull-request template. Open a [clinical rule issue](.github/ISSUE_TEMPLATE/clinical-rule-issue.md) if a dose, macro target, or contraindication looks wrong; those are triaged ahead of everything else.
+
+## License
+
+MIT, with a clinical-use notice attached — see [LICENSE](LICENSE). This is **not** a medical device and has **not** been approved by any regulatory authority.
 
 Built by **Dr. Vivek Raskar**, diabetologist.
