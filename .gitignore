@@ -1,0 +1,34 @@
+# Node
+node_modules/
+npm-debug.*
+
+# Expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# Native
+ios/
+android/
+
+# macOS
+.DS_Store
+._*
+
+# Env
+.env
+.env.local
+.env.*.local
+*.env
+
+# Firebase
+google-services.json
+GoogleService-Info.plist
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
