@@ -16,6 +16,10 @@ import buildShoppingList from "./src/engine/shoppingList.js";
 import { APP_VERSION, RULESET_DATE, planId } from "./src/utils/version.js";
 import { trendSnapshot } from "./src/storage/trend.js";
 import { buildCitations } from "./src/pdf/citations.js";
+import {
+  buildGlpIfProtocol, checkSafety, macroTargets,
+  weeklySchedule, GLP_DRUGS, IF_PROTOCOLS
+} from "./src/engine/glpIfProtocol.js";
 
 let failures = 0;
 const check = (name, fn) => {
@@ -167,6 +171,92 @@ check("citations: builds relevant blocks only", () => {
   const joined = refs.join(" ");
   if (!joined.includes("Standards of Care in Diabetes")) throw new Error("missing ADA Standards");
   if (!joined.includes("AHA/ACC Guideline on the Management of Blood Cholesterol")) throw new Error("missing lipid");
+});
+
+// ---- GLP-1 + IF protocol ----
+check("glpIf: disabled returns {enabled:false}", () => {
+  const p = buildGlpIfProtocol({});
+  if (p.enabled !== false) throw new Error("should be disabled");
+});
+
+check("glpIf: semaglutide + 16:8 weekly schedule phases", () => {
+  const p = buildGlpIfProtocol({
+    glpIf: { enabled: true, drug: "semaglutide", doseDay: "mon", ifProtocol: "16:8", dose: "1.0" },
+    weight: 90, height: 170, sex: "M", age: 50, tdee: 2200, ibw: 65
+  });
+  if (!p.enabled) throw new Error("should be enabled");
+  if (p.weeklySchedule.length !== 7) throw new Error("not 7 days");
+  const mon = p.weeklySchedule.find(d => d.dayKey === "mon");
+  const tue = p.weeklySchedule.find(d => d.dayKey === "tue");
+  const sun = p.weeklySchedule.find(d => d.dayKey === "sun");
+  if (!mon.doseDay) throw new Error("mon should be dose day");
+  if (mon.phase !== "dose-day") throw new Error("mon phase wrong: " + mon.phase);
+  if (tue.phase !== "peak-suppression") throw new Error("tue phase wrong: " + tue.phase);
+  if (sun.phase !== "appetite-return") throw new Error("sun phase wrong: " + sun.phase);
+});
+
+check("glpIf: tirzepatide dose day Thursday shifts cycle", () => {
+  const p = buildGlpIfProtocol({
+    glpIf: { enabled: true, drug: "tirzepatide", doseDay: "thu", ifProtocol: "16:8", dose: "5" },
+    weight: 110, height: 165, sex: "F", age: 42, tdee: 2000, ibw: 58
+  });
+  const thu = p.weeklySchedule.find(d => d.dayKey === "thu");
+  const fri = p.weeklySchedule.find(d => d.dayKey === "fri");
+  const wed = p.weeklySchedule.find(d => d.dayKey === "wed");
+  if (!thu.doseDay) throw new Error("thu should be dose day");
+  if (fri.phase !== "peak-suppression") throw new Error("fri peak");
+  if (wed.phase !== "appetite-return") throw new Error("wed appetite-return");
+});
+
+check("glpIf: 5:2 protocol picks low-cal days", () => {
+  const p = buildGlpIfProtocol({
+    glpIf: { enabled: true, drug: "semaglutide", doseDay: "mon", ifProtocol: "5:2", dose: "1.0" },
+    weight: 85, height: 170, sex: "M", age: 45, tdee: 2100, ibw: 65
+  });
+  const lowCal = p.weeklySchedule.filter(d => d.phase === "low-cal-day");
+  if (lowCal.length !== 2) throw new Error("expected 2 low-cal days, got " + lowCal.length);
+});
+
+check("glpIf: contraindications — pregnancy blocks", () => {
+  const s = checkSafety({ pregnancyStatus: "pregnant" });
+  if (!s.contraindicated) throw new Error("pregnancy should contraindicate");
+  if (!s.reasons.some(r => /pregnan/i.test(r))) throw new Error("no pregnancy reason");
+});
+
+check("glpIf: warnings — sulfonylurea dose-reduction", () => {
+  const s = checkSafety({ medications: ["sulfonylurea", "metformin"] });
+  if (s.contraindicated) throw new Error("should not contraindicate, only warn");
+  if (!s.warnings.some(w => /sulfonylurea/i.test(w))) throw new Error("no SU warning");
+});
+
+check("glpIf: macros protein target ≥ 1.4 × IBW", () => {
+  const m = macroTargets(
+    { ibw: 60, tdee: 2000 },
+    { drug: "semaglutide", ifProtocol: "16:8" }
+  );
+  if (m.protein_g < 80) throw new Error("protein too low: " + m.protein_g);
+  if (m.kcal < 1200) throw new Error("kcal below safety floor");
+  if (m.fluid_ml < 2000) throw new Error("fluid too low");
+});
+
+check("glpIf: daily agent (rybelsus) returns steady days", () => {
+  const p = buildGlpIfProtocol({
+    glpIf: { enabled: true, drug: "rybelsus", ifProtocol: "14:10", dose: "7" },
+    weight: 80, height: 168, sex: "M", age: 55, tdee: 2100, ibw: 62
+  });
+  if (p.weeklySchedule.every(d => d.phase === "daily-agent") !== true)
+    throw new Error("expected all daily-agent phase");
+});
+
+check("glpIf: counselling + food lists present", () => {
+  const p = buildGlpIfProtocol({
+    glpIf: { enabled: true, drug: "semaglutide", doseDay: "mon", ifProtocol: "16:8", dose: "1.0" },
+    weight: 90, height: 170, sex: "M", age: 50, tdee: 2200, ibw: 65
+  });
+  if (!p.counselling.length) throw new Error("no counselling");
+  if (!p.favor.length || !p.avoid.length) throw new Error("food lists empty");
+  if (!p.counselling.some(c => /rotate sites/i.test(c))) throw new Error("no injection-site advice");
+  if (!p.avoid.some(a => /alcohol/i.test(a))) throw new Error("no alcohol warning");
 });
 
 console.log("");

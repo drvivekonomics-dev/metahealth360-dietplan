@@ -25,6 +25,7 @@ import { build7DayCuisine, hasCuisine } from "./cuisineMeals.js";
 import buildInteractions from "./interactions.js";
 import { applyOverlayToWeek, overlayNotes } from "./dietaryOverlay.js";
 import buildShoppingList from "./shoppingList.js";
+import { buildGlpIfProtocol } from "./glpIfProtocol.js";
 import { APP_VERSION, RULESET_DATE, planId } from "../utils/version.js";
 import { trendSnapshot } from "../storage/trend.js";
 
@@ -171,6 +172,12 @@ export function generatePlan(patient) {
   //    archived plan for this same patient (passed in by the caller).
   const trend = buildTrend(patient, enriched);
 
+  // 9b. GLP-1 + IF protocol (optional, for patients on semaglutide /
+  //     tirzepatide / dulaglutide / liraglutide / rybelsus with or without
+  //     an intermittent-fasting window). Returns { enabled: false } if off.
+  //     Enriched patient includes ibw/tdee for macro math.
+  const glpIf = buildGlpIfProtocol(enriched);
+
   // 10. Version stamp — auditable footer on every PDF.
   const stamp = {
     appVersion: APP_VERSION,
@@ -214,6 +221,7 @@ export function generatePlan(patient) {
     mealPlan,
     interactions,
     overlay: { id: overlay, notes: overlayNotes(overlay) },
+    glpIf,
     shoppingList,
     trend,
     followUpDate: patient.followUpDate || null,
