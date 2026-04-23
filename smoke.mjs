@@ -7,6 +7,7 @@
  * so this is a Node-only restriction. Parse-level validation for those
  * files is covered by `node --check`.
  */
+import { readFileSync } from "fs";
 import { parseLabText, mergeLabsIntoForm } from "./src/utils/labParser.js";
 import { encode, decode } from "./src/storage/obfuscate.js";
 import { applyOverlayToDay } from "./src/engine/dietaryOverlay.js";
@@ -16,6 +17,8 @@ import buildShoppingList from "./src/engine/shoppingList.js";
 import { APP_VERSION, RULESET_DATE, planId } from "./src/utils/version.js";
 import { trendSnapshot } from "./src/storage/trend.js";
 import { buildCitations } from "./src/pdf/citations.js";
+import pregnancyRule from "./src/rules/pregnancy.js";
+import weightLossRule from "./src/rules/weightLoss.js";
 import {
   buildGlpIfProtocol, checkSafety, macroTargets,
   weeklySchedule, GLP_DRUGS, IF_PROTOCOLS
@@ -55,6 +58,13 @@ check("labParser: Metropolis-style multi-line", () => {
   const p = parseLabText(txt);
   const must = ["hba1c","fbs","ppbs","tc","ldl","hdl","tg","creatinine","egfr","hb"];
   for (const k of must) if (p.values[k] == null) throw new Error("missed " + k);
+});
+check("labParser: TC merges into form.totalCholesterol, not form.tc", () => {
+  const form = { totalCholesterol: "", tc: "" };
+  const p = parseLabText("Total Cholesterol 220");
+  const merged = mergeLabsIntoForm(form, p);
+  if (merged.totalCholesterol !== "220") throw new Error("TC did not reach form.totalCholesterol: got " + JSON.stringify(merged));
+  if (merged.tc === "220") throw new Error("regression: TC still writing to form.tc");
 });
 
 // ---- Obfuscate ----
@@ -171,6 +181,40 @@ check("citations: builds relevant blocks only", () => {
   const joined = refs.join(" ");
   if (!joined.includes("Standards of Care in Diabetes")) throw new Error("missing ADA Standards");
   if (!joined.includes("AHA/ACC Guideline on the Management of Blood Cholesterol")) throw new Error("missing lipid");
+});
+
+// ---- Rule field contract ----
+// We can't import dietEngine.js in Node (mealPlanner.js statically imports
+// indianFoods.json, which Node 22 rejects without an import assertion).
+// Instead we verify (a) each rule emits the expected field names, and
+// (b) dietEngine.js source-code references those field names so nothing is
+// silently dropped again.
+check("weightLoss: emits proteinGPerKg (renamed from proteinGPerKgTarget)", () => {
+  const spec = weightLossRule({ bmi: 32 });
+  if (spec.proteinGPerKg !== 1.2) throw new Error("proteinGPerKg missing or wrong");
+  if ("proteinGPerKgTarget" in spec) throw new Error("stale proteinGPerKgTarget field still present");
+});
+check("pregnancy T3: emits extraProtein, waterMlPerDay, B12/iodine/DHA", () => {
+  const spec = pregnancyRule({ trimester: 3 });
+  if (spec.extraProteinGPerDay !== 30) throw new Error("extraProteinGPerDay wrong: " + spec.extraProteinGPerDay);
+  if (spec.waterMlPerDay !== 2500) throw new Error("waterMlPerDay wrong");
+  if (spec.vitaminB12TargetMcgPerDay !== 2.6) throw new Error("B12 target missing");
+  if (spec.iodineTargetMcgPerDay !== 220) throw new Error("iodine target missing");
+  if (spec.dhaTargetMgPerDay !== 200) throw new Error("DHA target missing");
+});
+check("dietEngine: consumes the new rule fields (source-level wiring check)", () => {
+  const src = readFileSync("./src/engine/dietEngine.js", "utf8");
+  const needed = [
+    "extraProteinGPerDay",
+    "waterMlPerDay",
+    "fluidTargetMlPerDay",
+    "vitaminB12TargetMcgPerDay",
+    "iodineTargetMcgPerDay",
+    "dhaTargetMgPerDay",
+    "proteinGPerKg"
+  ];
+  const missing = needed.filter(n => !src.includes(n));
+  if (missing.length) throw new Error("dietEngine missing consumption of: " + missing.join(", "));
 });
 
 // ---- GLP-1 + IF protocol ----

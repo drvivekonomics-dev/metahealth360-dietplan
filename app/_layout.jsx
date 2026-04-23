@@ -5,7 +5,7 @@
  */
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { Stack, useRouter, useSegments } from "expo-router";
-import { onAuthStateChanged } from "firebase/auth";
+import { onAuthStateChanged, signOut } from "firebase/auth";
 import { auth } from "../src/firebase/config";
 import { ActivityIndicator, View, StyleSheet } from "react-native";
 
@@ -13,6 +13,20 @@ import { ActivityIndicator, View, StyleSheet } from "react-native";
 const PlanContext = createContext({ plan: null, setPlan: () => {} });
 export function usePlan() {
   return useContext(PlanContext);
+}
+
+// ------ Email allowlist -------------------------------------------------------
+// The Firebase project is public (web-app apiKey is a public identifier) and
+// anyone with the config could call createUserWithEmailAndPassword against it.
+// To keep the app clinic-only, we enforce a client-side allowlist in addition
+// to disabling self-signup in Firebase Console → Authentication → Settings.
+const ALLOWED_EMAILS = new Set([
+  "dr.vivekonomics@gmail.com"
+]);
+
+function isAllowed(user) {
+  const email = user?.email?.toLowerCase?.();
+  return !!email && ALLOWED_EMAILS.has(email);
 }
 
 // ------ Auth gate -------------------------------------------------------------
@@ -37,7 +51,15 @@ export default function RootLayout() {
   const [plan, setPlan] = useState(null);
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => {
+    const unsub = onAuthStateChanged(auth, async (u) => {
+      // If someone signs up / signs in with an un-allowlisted email, kick them
+      // back out before any app state is exposed.
+      if (u && !isAllowed(u)) {
+        try { await signOut(auth); } catch {}
+        setUser(null);
+        setReady(true);
+        return;
+      }
       setUser(u);
       setReady(true);
     });
