@@ -10,8 +10,12 @@
  *   6. Aggregate do/don't lists (deduplicated).
  *
  * Merge logic: most restrictive wins.
- *   - sodium, potassium, phosphorus, fluid: MIN of all conditions
- *   - protein g/day: MIN (CKD lowers below weight-loss target; CKD wins)
+ *   - sodium, potassium, phosphorus, fluid cap: MIN of all conditions
+ *   - protein g/day (absolute ceiling, e.g. CKD): MIN
+ *   - protein g/kg (lean-mass floor, e.g. weight loss / GLP-1): MAX
+ *   - protein add-on (pregnancy/lactation stack on top of baseline): SUM
+ *   - fluid target (pregnancy wants 2.5 L — a floor, not a cap): MAX
+ *   - micronutrient targets (Fe, folate, Ca, B12, iodine, DHA): MAX
  *   - added sugar: MIN
  *   - excludeTags: UNION; preferTags: UNION but preferTags lose if excluded
  *
@@ -43,11 +47,16 @@ export function mergeSpecs(specs, patient) {
     fluidMaxMlPerDay: Infinity,
     addedSugarMaxGperDay: Infinity,
     saturatedFatMaxPctKcal: Infinity,
-    proteinGPerDay: null,
-    proteinGPerKg: null,
+    proteinGPerDay: null,       // absolute ceiling (e.g. CKD) — MIN wins
+    proteinGPerKg: null,        // lean-mass floor (e.g. weight loss, GLP-1) — MAX wins
+    extraProteinGPerDay: 0,     // pregnancy / lactation add-on stacked on baseline — SUM
+    fluidTargetMlPerDay: null,  // pregnancy 2.5 L floor — MAX of emitted targets
     ironTargetMgPerDay: 0,
     folateTargetMcgPerDay: 0,
     calciumTargetMgPerDay: 0,
+    vitaminB12TargetMcgPerDay: 0,
+    iodineTargetMcgPerDay: 0,
+    dhaTargetMgPerDay: 0,
     preferTags: new Set(),
     excludeTags: new Set(),
     rules: [],
@@ -69,15 +78,30 @@ export function mergeSpecs(specs, patient) {
     if (s.addedSugarMaxGperDay != null) out.addedSugarMaxGperDay = Math.min(out.addedSugarMaxGperDay, s.addedSugarMaxGperDay);
     if (s.saturatedFatMaxPctKcal != null) out.saturatedFatMaxPctKcal = Math.min(out.saturatedFatMaxPctKcal, s.saturatedFatMaxPctKcal);
 
-    // CKD dictates low protein; WeightLoss wants high protein; CKD wins (lower value).
+    // Protein:
+    //   proteinGPerDay  = absolute ceiling (CKD) → MIN across specs.
+    //   proteinGPerKg   = lean-mass floor (weight loss, GLP-1) → MAX across specs.
+    //   extraProteinGPerDay = add-on on top of baseline (pregnancy / lactation) → SUM.
     if (s.proteinGPerDay != null) {
       out.proteinGPerDay = out.proteinGPerDay == null ? s.proteinGPerDay : Math.min(out.proteinGPerDay, s.proteinGPerDay);
-      out.proteinGPerKg = s.proteinGPerKg;
+    }
+    if (s.proteinGPerKg != null) {
+      out.proteinGPerKg = out.proteinGPerKg == null ? s.proteinGPerKg : Math.max(out.proteinGPerKg, s.proteinGPerKg);
+    }
+    if (s.extraProteinGPerDay) out.extraProteinGPerDay += s.extraProteinGPerDay;
+
+    // Fluid target (pregnancy wants a floor, e.g. 2.5 L). MAX across specs.
+    // Distinct from fluidMaxMlPerDay (HF/CKD ceiling) which still uses MIN above.
+    if (s.waterMlPerDay != null) {
+      out.fluidTargetMlPerDay = out.fluidTargetMlPerDay == null ? s.waterMlPerDay : Math.max(out.fluidTargetMlPerDay, s.waterMlPerDay);
     }
 
     if (s.ironTargetMgPerDay) out.ironTargetMgPerDay = Math.max(out.ironTargetMgPerDay, s.ironTargetMgPerDay);
     if (s.folateTargetMcgPerDay) out.folateTargetMcgPerDay = Math.max(out.folateTargetMcgPerDay, s.folateTargetMcgPerDay);
     if (s.calciumTargetMgPerDay) out.calciumTargetMgPerDay = Math.max(out.calciumTargetMgPerDay, s.calciumTargetMgPerDay);
+    if (s.vitaminB12TargetMcgPerDay) out.vitaminB12TargetMcgPerDay = Math.max(out.vitaminB12TargetMcgPerDay, s.vitaminB12TargetMcgPerDay);
+    if (s.iodineTargetMcgPerDay) out.iodineTargetMcgPerDay = Math.max(out.iodineTargetMcgPerDay, s.iodineTargetMcgPerDay);
+    if (s.dhaTargetMgPerDay) out.dhaTargetMgPerDay = Math.max(out.dhaTargetMgPerDay, s.dhaTargetMgPerDay);
 
     (s.preferTags || []).forEach(t => out.preferTags.add(t));
     (s.excludeTags || []).forEach(t => out.excludeTags.add(t));
@@ -134,9 +158,22 @@ export function generatePlan(patient) {
 
   // 4. Macro grams
   let macroG = calc.macroGramsFromKcal(targetKcal, spec.macros);
-  // If CKD dictates absolute protein g/day, override macros' protein
+  const weightKg = Number(patient.weight) || 0;
+
   if (spec.proteinGPerDay) {
+    // CKD (or any absolute ceiling) wins outright — including over add-ons.
     macroG.proteinG = Math.round(spec.proteinGPerDay);
+  } else {
+    // Honor a g/kg floor from weight loss / GLP-1 (MAX with macro-% value).
+    if (spec.proteinGPerKg && weightKg > 0) {
+      const floor = Math.round(spec.proteinGPerKg * weightKg);
+      if (floor > macroG.proteinG) macroG.proteinG = floor;
+    }
+    // Pregnancy / lactation add-on stacks on top (not applied when a CKD
+    // ceiling is active — the ceiling clinically trumps).
+    if (spec.extraProteinGPerDay) {
+      macroG.proteinG += Math.round(spec.extraProteinGPerDay);
+    }
   }
 
   // 5. Meal plan (7-day). Regional cuisine templates override the generic
@@ -208,11 +245,16 @@ export function generatePlan(patient) {
       potassiumMaxMgPerDay: isFinite(spec.potassiumMaxMgPerDay) ? spec.potassiumMaxMgPerDay : null,
       phosphorusMaxMgPerDay: isFinite(spec.phosphorusMaxMgPerDay) ? spec.phosphorusMaxMgPerDay : null,
       fluidMaxMlPerDay: isFinite(spec.fluidMaxMlPerDay) ? spec.fluidMaxMlPerDay : null,
+      fluidTargetMlPerDay: spec.fluidTargetMlPerDay ?? null,
       addedSugarMaxGperDay: isFinite(spec.addedSugarMaxGperDay) ? spec.addedSugarMaxGperDay : null,
       proteinGPerKg: spec.proteinGPerKg,
+      extraProteinGPerDay: spec.extraProteinGPerDay || null,
       ironTargetMgPerDay: spec.ironTargetMgPerDay || null,
       folateTargetMcgPerDay: spec.folateTargetMcgPerDay || null,
-      calciumTargetMgPerDay: spec.calciumTargetMgPerDay || null
+      calciumTargetMgPerDay: spec.calciumTargetMgPerDay || null,
+      vitaminB12TargetMcgPerDay: spec.vitaminB12TargetMcgPerDay || null,
+      iodineTargetMcgPerDay: spec.iodineTargetMcgPerDay || null,
+      dhaTargetMgPerDay: spec.dhaTargetMgPerDay || null
     },
     tiers: spec.tiers,
     rules: spec.rules,
