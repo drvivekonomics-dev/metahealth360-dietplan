@@ -504,10 +504,15 @@ export function buildHtml(plan) {
           ${t.potassiumMaxMgPerDay ? kv("Potassium (max)", `${t.potassiumMaxMgPerDay} mg`) : ""}
           ${t.phosphorusMaxMgPerDay ? kv("Phosphorus (max)", `${t.phosphorusMaxMgPerDay} mg`) : ""}
           ${t.fluidMaxMlPerDay ? kv(tr(lang, "fluid") + " (max)", `${t.fluidMaxMlPerDay} ml`) : ""}
+          ${t.fluidTargetMlPerDay ? kv(tr(lang, "fluid") + " (target)", `${t.fluidTargetMlPerDay} ml`) : ""}
           ${t.addedSugarMaxGperDay != null ? kv("Added sugar (max)", `${t.addedSugarMaxGperDay} g`) : ""}
+          ${t.extraProteinGPerDay ? kv("Protein add-on (pregnancy/lactation)", `+${t.extraProteinGPerDay} g`) : ""}
           ${t.ironTargetMgPerDay ? kv(tr(lang, "iron") + " (target)", `${t.ironTargetMgPerDay} mg`) : ""}
           ${t.folateTargetMcgPerDay ? kv("Folate (target)", `${t.folateTargetMcgPerDay} mcg`) : ""}
           ${t.calciumTargetMgPerDay ? kv("Calcium (target)", `${t.calciumTargetMgPerDay} mg`) : ""}
+          ${t.vitaminB12TargetMcgPerDay ? kv("Vitamin B12 (target)", `${t.vitaminB12TargetMcgPerDay} mcg`) : ""}
+          ${t.iodineTargetMcgPerDay ? kv("Iodine (target)", `${t.iodineTargetMcgPerDay} mcg`) : ""}
+          ${t.dhaTargetMgPerDay ? kv("DHA (target)", `${t.dhaTargetMgPerDay} mg`) : ""}
         </div>`
       )}
 
