@@ -23,6 +23,9 @@ import {
   buildGlpIfProtocol, checkSafety, macroTargets,
   weeklySchedule, GLP_DRUGS, IF_PROTOCOLS
 } from "./src/engine/glpIfProtocol.js";
+import {
+  decideTitration, buildTitrationCard
+} from "./src/engine/glp1Titration.js";
 
 let failures = 0;
 const check = (name, fn) => {
@@ -301,6 +304,164 @@ check("glpIf: counselling + food lists present", () => {
   if (!p.favor.length || !p.avoid.length) throw new Error("food lists empty");
   if (!p.counselling.some(c => /rotate sites/i.test(c))) throw new Error("no injection-site advice");
   if (!p.avoid.some(a => /alcohol/i.test(a))) throw new Error("no alcohol warning");
+});
+
+// ---- GLP-1 titration decision engine ----
+// Helper for the ISO date N days before today.
+const daysAgoIso = (n) => {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return d.toISOString().slice(0, 10);
+};
+
+check("titration: disabled returns {enabled:false}", () => {
+  const out = decideTitration({ glpIf: { enabled: false } });
+  if (out.enabled !== false) throw new Error("expected enabled=false");
+});
+
+check("titration: pancreatitis signs → discontinue", () => {
+  const out = decideTitration({
+    glpIf: { enabled: true, drug: "semaglutide", dose: "1.0" },
+    titrationVisit: { startedDate: daysAgoIso(40), pancreatitisSigns: true, weightKg: 80 }
+  });
+  if (out.action !== "discontinue") throw new Error("action=" + out.action);
+  if (out.nextDose !== null) throw new Error("nextDose should be null");
+  if (out.tone !== "danger") throw new Error("tone=" + out.tone);
+  if (!out.reasoning.some(r => /pancreatitis/i.test(r))) throw new Error("no pancreatitis reason");
+});
+
+check("titration: rapid loss >2%/wk → reduce", () => {
+  const out = decideTitration({
+    glpIf: { enabled: true, drug: "semaglutide", dose: "1.0" },
+    titrationVisit: {
+      startedDate: daysAgoIso(42),
+      weightKg: 70, lastVisitWeightKg: 75, lastVisitDate: daysAgoIso(14),
+      baselineWeightKg: 85
+    }
+  });
+  if (out.action !== "reduce") throw new Error("action=" + out.action);
+  if (out.nextDose !== 0.5) throw new Error("nextDose=" + out.nextDose);
+});
+
+check("titration: <28 days on dose → hold (interval)", () => {
+  const out = decideTitration({
+    glpIf: { enabled: true, drug: "semaglutide", dose: "0.5" },
+    titrationVisit: {
+      startedDate: daysAgoIso(14),
+      weightKg: 78, lastVisitWeightKg: 80, lastVisitDate: daysAgoIso(14),
+      baselineWeightKg: 85
+    }
+  });
+  if (out.action !== "hold") throw new Error("action=" + out.action);
+  if (!out.reasoning.some(r => /days at|minimum 28/i.test(r))) throw new Error("no interval reason");
+});
+
+check("titration: N/V grade 2 → hold (tolerability)", () => {
+  const out = decideTitration({
+    glpIf: { enabled: true, drug: "semaglutide", dose: "1.0" },
+    titrationVisit: {
+      startedDate: daysAgoIso(40),
+      weightKg: 78, lastVisitWeightKg: 80, lastVisitDate: daysAgoIso(28),
+      baselineWeightKg: 85,
+      nvGrade: 2
+    }
+  });
+  if (out.action !== "hold") throw new Error("action=" + out.action);
+  if (!out.reasoning.some(r => /grade 2/i.test(r))) throw new Error("no grade-2 reason");
+});
+
+check("titration: plateau (<1%/wk, 4w+) → escalate", () => {
+  const out = decideTitration({
+    glpIf: { enabled: true, drug: "semaglutide", dose: "1.0" },
+    titrationVisit: {
+      startedDate: daysAgoIso(35),
+      weightKg: 79.7, lastVisitWeightKg: 80.0, lastVisitDate: daysAgoIso(28),
+      baselineWeightKg: 85,
+      nvGrade: 0
+    }
+  });
+  if (out.action !== "escalate") throw new Error("action=" + out.action);
+  if (out.nextDose !== 1.7) throw new Error("nextDose=" + out.nextDose);
+});
+
+check("titration: at max dose (2.4 sema) → hold (ceiling)", () => {
+  const out = decideTitration({
+    glpIf: { enabled: true, drug: "semaglutide", dose: "2.4" },
+    titrationVisit: {
+      startedDate: daysAgoIso(40),
+      weightKg: 80, lastVisitWeightKg: 81, lastVisitDate: daysAgoIso(28),
+      baselineWeightKg: 85,
+      nvGrade: 0
+    }
+  });
+  if (out.action !== "hold") throw new Error("action=" + out.action);
+  if (!out.reasoning.some(r => /maximum|ladder exhausted/i.test(r))) throw new Error("no max reason");
+});
+
+check("titration: 15%+ cumulative loss → hold (target achieved)", () => {
+  const out = decideTitration({
+    glpIf: { enabled: true, drug: "semaglutide", dose: "1.0" },
+    titrationVisit: {
+      startedDate: daysAgoIso(60),
+      weightKg: 72, lastVisitWeightKg: 73, lastVisitDate: daysAgoIso(28),
+      baselineWeightKg: 90,   // 20% loss
+      nvGrade: 0
+    }
+  });
+  if (out.action !== "hold") throw new Error("action=" + out.action);
+  if (out.tone !== "ok") throw new Error("tone=" + out.tone);
+  if (!out.reasoning.some(r => /target|goal achieved/i.test(r))) throw new Error("no target reason");
+});
+
+check("titration: rybelsus uses 30-day min interval", () => {
+  const out = decideTitration({
+    glpIf: { enabled: true, drug: "rybelsus", dose: "3" },
+    titrationVisit: {
+      // 28d on dose (<30 min for rybelsus), 1.25% cumulative (below 5% target)
+      startedDate: daysAgoIso(28),
+      weightKg: 79, lastVisitWeightKg: 80, lastVisitDate: daysAgoIso(28),
+      baselineWeightKg: 80
+    }
+  });
+  if (out.action !== "hold") throw new Error("action=" + out.action);
+  if (!out.reasoning.some(r => /minimum 30/i.test(r))) throw new Error("rybelsus should use 30-day interval");
+});
+
+check("titration: unsupported drug (tirzepatide) returns unsupported note", () => {
+  const out = decideTitration({
+    glpIf: { enabled: true, drug: "tirzepatide", dose: "5" },
+    titrationVisit: { startedDate: daysAgoIso(30), weightKg: 80 }
+  });
+  if (out.unsupported !== true) throw new Error("expected unsupported=true");
+});
+
+check("titration: card HTML contains dose + action + next review", () => {
+  const decision = decideTitration({
+    glpIf: { enabled: true, drug: "semaglutide", dose: "1.0" },
+    titrationVisit: {
+      startedDate: daysAgoIso(35),
+      weightKg: 79.7, lastVisitWeightKg: 80.0, lastVisitDate: daysAgoIso(28),
+      baselineWeightKg: 85,
+      nvGrade: 0
+    }
+  });
+  const html = buildTitrationCard({ name: "Test Patient" }, decision);
+  if (!html.includes("ESCALATE")) throw new Error("missing action label");
+  if (!html.includes("1.7 mg")) throw new Error("missing next dose");
+  if (!html.includes("Test Patient")) throw new Error("missing patient name");
+  if (!html.includes("Review on")) throw new Error("missing review label");
+});
+
+check("dietEngine: consumes titrationDecision (source-level wiring check)", () => {
+  const src = readFileSync("./src/engine/dietEngine.js", "utf8");
+  if (!/decideTitration/.test(src)) throw new Error("dietEngine does not import decideTitration");
+  if (!/titrationDecision/.test(src)) throw new Error("dietEngine does not expose titrationDecision");
+});
+
+check("buildHtml: renders titration card (source-level wiring check)", () => {
+  const src = readFileSync("./src/pdf/buildHtml.js", "utf8");
+  if (!/buildTitrationCard/.test(src)) throw new Error("buildHtml does not import buildTitrationCard");
+  if (!/plan\.titrationDecision/.test(src)) throw new Error("buildHtml does not pass titrationDecision");
 });
 
 console.log("");
