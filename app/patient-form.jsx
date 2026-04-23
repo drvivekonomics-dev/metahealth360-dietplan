@@ -83,6 +83,24 @@ const EMPTY = {
     t1dm: false,
     retinopathyProliferative: false,
     eatingDisorderHx: false
+  },
+
+  // Titration follow-up visit — only used when glpIf.enabled AND the
+  // clinician is doing a follow-up (not an initiation visit).
+  titrationVisit: {
+    startedDate: "",
+    previousDose: "",
+    weightKg: "",
+    lastVisitWeightKg: "",
+    lastVisitDate: "",
+    baselineWeightKg: "",
+    nvGrade: 0,
+    pancreatitisSigns: false,
+    gallbladderSx: false,
+    severeDehydration: false,
+    lastHbA1c: "",
+    targetAchieved: false,
+    notes: ""
   }
 };
 
@@ -200,6 +218,13 @@ export default function PatientFormScreen() {
   const updateGlpIf = (k, v) => setF((p) => ({ ...p, glpIf: { ...p.glpIf, [k]: v } }));
   const toggleGlpFlag = (k) =>
     setF((p) => ({ ...p, glpFlags: { ...p.glpFlags, [k]: !p.glpFlags[k] } }));
+  const updateTitration = (k, v) =>
+    setF((p) => ({ ...p, titrationVisit: { ...p.titrationVisit, [k]: v } }));
+  const toggleTitrationFlag = (k) =>
+    setF((p) => ({
+      ...p,
+      titrationVisit: { ...p.titrationVisit, [k]: !p.titrationVisit[k] }
+    }));
 
   const canSubmit = useMemo(() => f.conditions.length > 0 && f.weight && f.height && f.age, [f]);
 
@@ -254,7 +279,16 @@ export default function PatientFormScreen() {
       urea: +f.urea || undefined,
       albumin: +f.albumin || undefined,
       glpIf: f.glpIf && f.glpIf.enabled ? { ...f.glpIf } : { enabled: false },
-      glpFlags: { ...f.glpFlags }
+      glpFlags: { ...f.glpFlags },
+      titrationVisit: f.glpIf && f.glpIf.enabled ? {
+        ...f.titrationVisit,
+        weightKg: +f.titrationVisit.weightKg || undefined,
+        lastVisitWeightKg: +f.titrationVisit.lastVisitWeightKg || undefined,
+        baselineWeightKg: +f.titrationVisit.baselineWeightKg || undefined,
+        lastHbA1c: +f.titrationVisit.lastHbA1c || undefined,
+        nvGrade: +f.titrationVisit.nvGrade || 0,
+        previousDose: +f.titrationVisit.previousDose || undefined
+      } : undefined
     };
 
     // Visit-to-visit lookup: find the last archived plan for this same name.
@@ -543,6 +577,114 @@ export default function PatientFormScreen() {
               );
             })}
           </View>
+
+          {/* ===== Titration follow-up (sema SC + rybelsus only) ===== */}
+          {(f.glpIf.drug === "semaglutide" || f.glpIf.drug === "rybelsus") ? (
+            <>
+              <Text style={styles.subsection}>
+                Titration follow-up visit — leave blank for initiation
+              </Text>
+              <View style={styles.row}>
+                <Field label="Current dose started on (YYYY-MM-DD)">
+                  <Txt
+                    value={f.titrationVisit.startedDate}
+                    onChange={(v) => updateTitration("startedDate", v)}
+                    placeholder="e.g. 2026-03-26"
+                  />
+                </Field>
+                <Field label="Previous ladder dose (mg)">
+                  <Num
+                    value={f.titrationVisit.previousDose}
+                    onChange={(v) => updateTitration("previousDose", v)}
+                    placeholder="e.g. 0.5"
+                  />
+                </Field>
+              </View>
+              <View style={styles.row}>
+                <Field label="Today's weight (kg)">
+                  <Num
+                    value={f.titrationVisit.weightKg}
+                    onChange={(v) => updateTitration("weightKg", v)}
+                    placeholder="e.g. 78.2"
+                  />
+                </Field>
+                <Field label="Last visit weight (kg)">
+                  <Num
+                    value={f.titrationVisit.lastVisitWeightKg}
+                    onChange={(v) => updateTitration("lastVisitWeightKg", v)}
+                    placeholder="e.g. 80.1"
+                  />
+                </Field>
+              </View>
+              <View style={styles.row}>
+                <Field label="Last visit date (YYYY-MM-DD)">
+                  <Txt
+                    value={f.titrationVisit.lastVisitDate}
+                    onChange={(v) => updateTitration("lastVisitDate", v)}
+                    placeholder="e.g. 2026-03-26"
+                  />
+                </Field>
+                <Field label="Baseline weight at GLP-1 start (kg)">
+                  <Num
+                    value={f.titrationVisit.baselineWeightKg}
+                    onChange={(v) => updateTitration("baselineWeightKg", v)}
+                    placeholder="e.g. 92.0"
+                  />
+                </Field>
+              </View>
+              <View style={styles.row}>
+                <Field label="Today's / recent HbA1c (%)">
+                  <Num
+                    value={f.titrationVisit.lastHbA1c}
+                    onChange={(v) => updateTitration("lastHbA1c", v)}
+                    placeholder="e.g. 6.8"
+                  />
+                </Field>
+                <Field label="N / V grade (CTCAE 0-3)">
+                  <Picker
+                    value={String(f.titrationVisit.nvGrade)}
+                    onChange={(v) => updateTitration("nvGrade", Number(v))}
+                    options={[
+                      { v: "0", l: "0 — none" },
+                      { v: "1", l: "1 — mild" },
+                      { v: "2", l: "2 — moderate" },
+                      { v: "3", l: "3 — severe" }
+                    ]}
+                  />
+                </Field>
+              </View>
+
+              <Text style={styles.subsection}>Red flags (any ✓ triggers reduce / stop)</Text>
+              <View style={styles.conditionGrid}>
+                {[
+                  ["pancreatitisSigns", "Pancreatitis signs"],
+                  ["gallbladderSx", "RUQ pain / gallbladder sx"],
+                  ["severeDehydration", "Severe dehydration / AKI"]
+                ].map(([id, label]) => {
+                  const on = f.titrationVisit[id];
+                  return (
+                    <Pressable
+                      key={id}
+                      onPress={() => toggleTitrationFlag(id)}
+                      style={[styles.flagPill, on && styles.flagPillDangerOn]}
+                    >
+                      <Text style={[styles.flagText, on && styles.flagTextOn]}>{label}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              <View style={styles.switchRow}>
+                <Text style={styles.switchLabel}>Target achieved (maintenance hold)</Text>
+                <Switch
+                  value={f.titrationVisit.targetAchieved}
+                  onValueChange={(v) => updateTitration("targetAchieved", v)}
+                  trackColor={{ false: "#ccc", true: "#0B6E4F" }}
+                  thumbColor="#fff"
+                />
+              </View>
+            </>
+          ) : null}
         </>
       ) : null}
 

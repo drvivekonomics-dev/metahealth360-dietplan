@@ -30,6 +30,7 @@ import buildInteractions from "./interactions.js";
 import { applyOverlayToWeek, overlayNotes } from "./dietaryOverlay.js";
 import buildShoppingList from "./shoppingList.js";
 import { buildGlpIfProtocol } from "./glpIfProtocol.js";
+import { decideTitration } from "./glp1Titration.js";
 import { APP_VERSION, RULESET_DATE, planId } from "../utils/version.js";
 import { trendSnapshot } from "../storage/trend.js";
 
@@ -215,6 +216,10 @@ export function generatePlan(patient) {
   //     Enriched patient includes ibw/tdee for macro math.
   const glpIf = buildGlpIfProtocol(enriched);
 
+  // 9c. Titration decision (sema SC + rybelsus only). Returns
+  //     { enabled:false } when no titration visit data present.
+  const titrationDecision = decideTitration(enriched);
+
   // 10. Version stamp — auditable footer on every PDF.
   const stamp = {
     appVersion: APP_VERSION,
@@ -264,6 +269,7 @@ export function generatePlan(patient) {
     interactions,
     overlay: { id: overlay, notes: overlayNotes(overlay) },
     glpIf,
+    titrationDecision,
     shoppingList,
     trend,
     followUpDate: patient.followUpDate || null,

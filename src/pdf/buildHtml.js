@@ -8,6 +8,7 @@
  */
 import { buildCitations } from "./citations.js";
 import { t as tr } from "../i18n/translations.js";
+import { buildTitrationCard } from "../engine/glp1Titration.js";
 
 const BRAND = {
   primary: "#0B6E4F",
@@ -477,6 +478,8 @@ export function buildHtml(plan) {
               ? kv(tr(lang, "overlay"), overlayLabel(plan.overlay.id)) : ""}
         </div>`
       )}
+
+      ${buildTitrationCard(p, plan.titrationDecision)}
 
       ${section(
         "Clinical Calculators",
