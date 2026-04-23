@@ -41,7 +41,7 @@ export default function weightLossRule(patient) {
     calorieFactor: null,     // engine should apply absolute deficit instead
     kcalDeficit,
     macros: { carb: 0.40, pro: 0.30, fat: 0.30 },  // higher protein preserves lean mass
-    proteinGPerKgTarget: 1.2,
+    proteinGPerKg: 1.2,
     fiberMinGperDay: 30,
     preferTags: ["low-gi", "high-fiber", "high-protein", "low-cal"],
     excludeTags: ["avoid-diabetes", "saturated"],

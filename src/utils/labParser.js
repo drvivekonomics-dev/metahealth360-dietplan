@@ -72,7 +72,7 @@ export function mergeLabsIntoForm(form, parsed) {
   take("hba1c", "hba1c");
   take("fbs", "fbs");
   take("ppbs", "ppbs");
-  take("tc", "tc");
+  take("totalCholesterol", "tc");   // form + rules use "totalCholesterol"
   take("ldl", "ldl");
   take("hdl", "hdl");
   take("tg", "tg");
